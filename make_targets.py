@@ -13,6 +13,12 @@ from openbb_terminal.sdk import openbb
 def get_ar_dates(symbol, config_dict):
     '''
     Returns: The annual report dates for each symbol.
+
+    目的：獲取特定股票符號的年報發布日期。
+    流程：
+    - 使用 os.path.join 和 glob.glob 結合 symbol 和 config_dict 中的路徑來定位年報文件夾。
+    - 只選擇路徑下的文件夾（忽略文件），將每個文件夾名視為一個年報日期。
+    - 將這些日期排序後返回。
     '''
     symbol_path = os.path.join(config_dict['annual_reports_pdf_save_directory'], symbol)
     folder_names = [os.path.basename(folder) for folder in glob.glob(os.path.join(symbol_path, '*')) \
@@ -30,6 +36,12 @@ def get_pct_returns_defined_date(price_data, start_date, end_date, tolerance_day
                         Some data can be missing due to Weekends or Holidays
     Returns:
         Percentage price change between start and end date.
+
+    目的：計算從 start_date 到 end_date 期間的股票價格百分比變化。
+    流程：
+    - 先篩選出位於起止日期範圍內的價格數據。
+    - 檢查數據開始和結束日期與所需日期的差異是否超過容忍天數。如果是，返回 np.nan。
+    - 計算指定日期範圍內的價格百分比變化。
     '''
     price_data_range = price_data.sort_index().loc[lambda x: (x.index>=start_date) & \
                                                                (x.index <= end_date)]
@@ -54,6 +66,10 @@ def get_pct_returns_range(price_data, start_date, end_date, quantile, tolerance_
                         Some data can be missing due to Weekends or Holidays
     Returns:
         Specified quantile of percentage price change between start_date and before the end_date
+
+    目的：獲取定義時間範圍內特定百分位的價格百分比變化。
+    流程：
+    - 與 get_pct_returns_defined_date 類似，但是在計算百分比變化時，會根據指定的百分位數（quantile）來計算結束價格（如最大值或最小值）。
     '''
     price_data_range = price_data.sort_index().loc[lambda x: (x.index>=start_date) & \
                                                                (x.index <= end_date)]
@@ -75,6 +91,11 @@ def get_all_targets(price_data, start_date, num_days_12m, prepend_string):
         start_date: The start date of computing pct returns
         num_days_12m: Num of Days between start_date and successive annual report date
         prepend_string: Denoting the category of price_data. One of 'target' and 'sp500'
+        
+    目的：生成不同時間範圍和百分位數的目標回報。
+    流程：
+    - 對多個時間段（3, 6, 9, 12個月）和百分位數（最大和最小）使用前面的函數來計算回報。
+    - 這些回報被保存在一個字典中，並附加一個前綴字符串（如 'target' 或 'sp500'）。
     '''
     target_returns_dict = {}
     try:
@@ -115,6 +136,12 @@ def make_targets(symbol, start_date, end_date, price_data_sp500, config_dict):
         price_data_sp500: Prefetched dataframe for ticker ^GSPC which gives price data for S&P500
     Returns:
         Pandas DF containing percentage returns between annual report dates for the symbol
+
+    目的：為每個股票符號創建目標回報信息。
+    流程：
+    - 使用 openbb.stocks.load 從股市數據庫中加載特定股票的價格數據。
+    - 遍歷每個年報日期，使用 get_all_targets 為每個報告期間生成目標回報數據。
+    - 同時計算股票和S&P 500的目標回報，並將這些數據合併到一個 Pandas 數據框中。
     '''
     price_data = openbb.stocks.load(symbol, start_date=start_date, end_date=end_date, 
                                     verbose=False)
@@ -142,6 +169,12 @@ def make_targets(symbol, start_date, end_date, price_data_sp500, config_dict):
 def make_targets_all_symbols(start_date, end_date, config_dict):
     '''
     Function to return the complete dataframe for all symbols and all annual report date periods
+
+    目的：為所有股票符號生成一個綜合的目標數據框。
+    流程：
+    - 讀取配置文件中的股票符號列表。
+    - 對每個股票符號調用 make_targets 函數。
+    - 將所有股票的目標數據合併到一個大的數據框中。
     '''
     symbol_names = [os.path.basename(folder) for folder in glob.glob(os.path.join(config_dict['annual_reports_pdf_save_directory'], '*')) \
                             if os.path.isdir(folder)]
@@ -160,6 +193,11 @@ def get_normalized_column(df, col):
     Function to rank and then normalise a column in the df.
     Returns:
         Pandas DF with additional normalised column
+    
+    目的：將數據框中的列標準化。
+    流程：
+    - 使用 Pandas 的 rank 方法對指定列進行排名，然後進行標準化。
+    - 使用正態分布的累積分佈函數（stats.norm.ppf）進一步轉換排名數據，使其分佈更接近標準正態分佈。
     '''
     new_col = col + '_normalised'
     preds = df.loc[:, col]
@@ -178,6 +216,11 @@ def bin_targets(df, input_col, output_col, percentile_list, label_list):
         label_list: labels aka bins
     Returns:
         Pandas DF with binned targets. Used for final ML model building
+
+    目的：根據百分位數對目標列進行分箱並標籤化。
+    流程：
+    - 使用 Pandas 的 qcut 函數根據百分位數列表對數據進行分箱。
+    - 將這些箱子映射到指定的標籤上，用於後續的機器學習模型訓練。
     '''
     s = df.loc[:, input_col]
     binned_series = pd.qcut(s, q=percentile_list, labels=label_list)
@@ -187,6 +230,12 @@ def bin_targets(df, input_col, output_col, percentile_list, label_list):
     return df
 
 def main(args):
+    '''
+    流程：
+    - 加載配置文件並設定日期範圍。
+    - 調用 make_targets_all_symbols 為所有股票生成目標數據。
+    - 對數據進行清洗和標準化處理，然後將其保存為一個可供機器學習模型使用的格式。
+    '''
     with open(args.config_path) as json_file:
         config_dict = json.load(json_file)
     start_date='2002-01-01'
